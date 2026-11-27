@@ -1,0 +1,39 @@
+name: Crear APK de Forja
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['index.html','sw.js','manifest.json','.github/workflows/apk.yml']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - name: Preparar proyecto Capacitor
+        run: |
+          mkdir -p build && cd build
+          npm init -y >/dev/null
+          npm i @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/local-notifications@6 @capacitor/share@6 @capacitor/filesystem@6
+          mkdir www
+          cp ../index.html ../manifest.json ../icon-192.png ../icon-512.png www/
+          cp node_modules/@capacitor/core/dist/capacitor.js www/capacitor.js
+          # cargar el puente nativo solo en el APK
+          sed -i '0,/<script>/s//<script src="capacitor.js"><\/script>\n<script>/' www/index.html
+          npx cap init Forja com.dassiel.forja --web-dir=www
+          npx cap add android
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <application#' $M
+          npx cap sync android
+      - name: Compilar APK
+        run: |
+          cd build/android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Forja-APK
+          path: build/android/app/build/outputs/apk/debug/app-debug.apk
